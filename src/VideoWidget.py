@@ -41,20 +41,18 @@ class VideoPlayerWidget(QVideoWidget):
 			return False;
 		return this.__mediaPlayer.state() == QMediaPlayer.PlayingState;
 		
-	def JumpToNextKeyFrame(this):
-		this.__currentKeyFrameIdx += 1;
-		ts = this.__keyFrameList[this.__currentKeyFrameIdx];
+	def JumpToKeyFrame(this, keyFrame):
+		this.__currentKeyFrameIdx = keyFrame;
+		ts = this.__GetScaledKeyFrameTime(this.__currentKeyFrameIdx);
 		this.__mediaPlayer.setPosition(ts);
 		
-		this.__parent.OnKeyFrameChanged(this.__currentKeyFrameIdx);
+		this.__parent.OnKeyFrameChangedByPlayback(this.__currentKeyFrameIdx);
+		
+	def JumpToNextKeyFrame(this):
+		this.JumpToKeyFrame(this.__currentKeyFrameIdx + 1);
 		
 	def JumpToPrevKeyFrame(this):
-		if(this.__currentKeyFrameIdx > 0):
-			this.__currentKeyFrameIdx -= 1;
-		ts = this.__keyFrameList[this.__currentKeyFrameIdx];
-		this.__mediaPlayer.setPosition(ts);
-		
-		this.__parent.OnKeyFrameChanged(this.__currentKeyFrameIdx);
+		this.JumpToKeyFrame(this.__currentKeyFrameIdx - 1);
 		
 	def PlayPause(this):
 		if(this.__mediaPlayer is not None):
@@ -79,41 +77,45 @@ class VideoPlayerWidget(QVideoWidget):
 	def SetKeyFrameList(this, keyFrameList):
 		this.__keyFrameList = keyFrameList;
 		
+		this.JumpToKeyFrame(this.__currentKeyFrameIdx);
+		
 	#Event handlers
 	def mousePressEvent(this, event):
 		if(event.button() == Qt.LeftButton):
 			fltPos = event.x() / float(this.width());
 			duration = this.__mediaPlayer.duration();
 			pos = fltPos * duration;
-			this.__currentKeyFrameIdx = this.__GetNextKeyFrame(pos);
-			ts = this.__keyFrameList[this.__currentKeyFrameIdx];
-			this.__mediaPlayer.setPosition(ts);
-			
-			this.__parent.OnKeyFrameChanged(this.__currentKeyFrameIdx);
+			keyFrame = this.__GetNextKeyFrame(pos);
+			this.JumpToKeyFrame(keyFrame);
 			
 	#Private methods
 	def __GetNextKeyFrame(this, pos):
 		for i in range(0, len(this.__keyFrameList)):
-			ts = this.__keyFrameList[i];
+			ts = this.__GetScaledKeyFrameTime(i);
 			if(ts > pos):
 				return i;
 				
 		return None;
+		
+	def __GetScaledKeyFrameTime(this, keyFrame):
+		ts = this.__keyFrameList[keyFrame];
+		
+		return ts // 1000000;
 		
 	#Event handlers
 	def __OnPositionChanged(this, pos):
 		if(this.IsPlaying()):
 			oldIdx = this.__currentKeyFrameIdx;
 			while(this.__currentKeyFrameIdx < len(this.__keyFrameList)):
-				if(pos > this.__keyFrameList[this.__currentKeyFrameIdx+1]):
+				if(this.__currentKeyFrameIdx < len(this.__keyFrameList)-1 and pos > this.__GetScaledKeyFrameTime(this.__currentKeyFrameIdx+1) ):
 					this.__currentKeyFrameIdx += 1;
-				elif(pos < this.__keyFrameList[this.__currentKeyFrameIdx]):
+				elif(pos < this.__GetScaledKeyFrameTime(this.__currentKeyFrameIdx)):
 					this.__currentKeyFrameIdx -= 1;
 				else:
 					break;
 					
 			if(not(oldIdx == this.__currentKeyFrameIdx)):
-				this.__parent.OnKeyFrameChanged(this.__currentKeyFrameIdx);
+				this.__parent.OnKeyFrameChangedByPlayback(this.__currentKeyFrameIdx);
 """
 		this.__currentVideo = None;
 		this.__currentSection = None;
