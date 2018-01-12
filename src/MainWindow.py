@@ -192,7 +192,7 @@ class MainWindow(QWidget):
 		this.__endTs = this.__ParseSexasegimalTimeStamp(matches[0]);
 		
 		#step 2: find valid streams
-		matches = re.findall('Stream #0:([0-9]+)(?:\(.*?\))?(?:[.+?])?: (Video|Audio)', content);
+		matches = re.findall('Stream #0:([0-9]+)(?:\(.*?\))?(?:\[.+?\])?: (Video|Audio)', content);
 		for (streamIndex, streamType) in matches:
 			this.__streams[int(streamIndex)] = streamType;
 			
