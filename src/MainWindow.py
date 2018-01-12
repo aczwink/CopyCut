@@ -192,7 +192,7 @@ class MainWindow(QWidget):
 		this.__endTs = this.__ParseSexasegimalTimeStamp(matches[0]);
 		
 		#step 2: find valid streams
-		matches = re.findall('Stream #0:([0-9]+)(?:\(.*?\))?: (Video|Audio)', content);
+		matches = re.findall('Stream #0:([0-9]+)(?:\(.*?\))?(?:[.+?])?: (Video|Audio)', content);
 		for (streamIndex, streamType) in matches:
 			this.__streams[int(streamIndex)] = streamType;
 			
@@ -277,7 +277,7 @@ class MainWindow(QWidget):
 		ts = (ts // 60);
 		h = ts;
 		
-		return "%02d:%02d:%02d.%d" % (h, m, s, fractional);
+		return "%02d:%02d:%02d.%09d" % (h, m, s, fractional);
 		
 	def __UpdateKeyFrameTime(this, spinBox, timeLabel):
 		keyFrameNumber = spinBox.value();
@@ -305,7 +305,7 @@ class MainWindow(QWidget):
 				QMessageBox.information(this, "Aborted", "Cutting was aborted.");
 				
 		#evaluate start and duration
-		delta = this.__offset.value();
+		delta = this.__offset.value() * 1000000;
 		startPos = this.__activeKeyFrameList[startKeyFrame] - delta;
 		if(endKeyFrame == len(this.__activeKeyFrameList)):
 			#cut to end of video
