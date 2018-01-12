@@ -129,6 +129,12 @@ class MainWindow(QWidget):
 		cutBtn.clicked.connect(this.__OnCut);
 		actionsPanel.addWidget(cutBtn);
 		
+		this.__offset = QSpinBox();
+		this.__offset.setMinimum(-10000);
+		this.__offset.setMaximum(10000);
+		actionsPanel.addWidget(QLabel("Time offset (ms): "));
+		actionsPanel.addWidget(this.__offset);
+		
 		mainLayout.addLayout(actionsPanel);
 		
 		this.setLayout(mainLayout);
@@ -299,7 +305,7 @@ class MainWindow(QWidget):
 				QMessageBox.information(this, "Aborted", "Cutting was aborted.");
 				
 		#evaluate start and duration
-		delta = 0;
+		delta = this.__offset.value();
 		startPos = this.__activeKeyFrameList[startKeyFrame] - delta;
 		if(endKeyFrame == len(this.__activeKeyFrameList)):
 			#cut to end of video
@@ -366,6 +372,10 @@ class MainWindow(QWidget):
 		this.__keyFrameCounter.setMaximum(maxKeyFrame);
 		this.__cutFrom.setMaximum(maxKeyFrame);
 		this.__cutTo.setMaximum(maxKeyFrame + 1); #+ the end of video marker
+		
+		#always default to the full video		
+		this.__cutFrom.setValue(0);		
+		this.__cutTo.setValue(maxKeyFrame + 1);
 		
 	def OnKeyFrameChangedByPlayback(this, keyFrameNumber):
 		this.__keyFrameCounter.blockSignals(True);
