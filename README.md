@@ -5,3 +5,6 @@ A tool for lossless stream copy cutting
 
 ### Packages on Arch Linux
 pacman -S gst-libav
+
+### Packages on Ubuntu
+apt-get install qt5-default python3-pyqt5 python3-pyqt5.qtmultimedia libqt5multimedia5-plugins

@@ -1,5 +1,5 @@
 __license__ = u"""
-Copyright (c) 2017 Amir Czwink (amir130@hotmail.de)
+Copyright (c) 2017-2018 Amir Czwink (amir130@hotmail.de)
 
 This file is part of CopyCut.
 
@@ -68,7 +68,7 @@ class MainWindow(QWidget):
 		#Private members
 		this.__path = None;
 		this.__streams = {}; #maps valid stream indices from input to stream type (string)
-		this.__keyFrames = {}; #maps stream indices to sets of key-frame time stamps in nanoseconds
+		this.__keyFrames = {}; #maps stream indices to lists of key-frame time stamps in nanoseconds
 		this.__combinedKeyFrames = []; #list of combination of all shared time stamps accross all streams
 		this.__activeKeyFrameList = []; #the keyframe set that is in use for playback and cutting
 		
@@ -98,6 +98,7 @@ class MainWindow(QWidget):
 		this.__cutFromBtn.clicked.connect(this.__OnSetFrom);
 		statusPanel.addWidget(this.__cutFromBtn);
 		this.__cutFrom = QSpinBox();
+		this.__cutFrom.valueChanged.connect(this.__OnCutFromChanged);
 		statusPanel.addWidget(this.__cutFrom);
 		this.__cutFromTime = QLabel("@ 00:00:00.0");
 		statusPanel.addWidget(this.__cutFromTime);
@@ -106,6 +107,7 @@ class MainWindow(QWidget):
 		this.__cutToBtn.clicked.connect(this.__OnSetTo);
 		statusPanel.addWidget(this.__cutToBtn);
 		this.__cutTo = QSpinBox();
+		this.__cutTo.valueChanged.connect(this.__OnCutToChanged);
 		statusPanel.addWidget(this.__cutTo);
 		this.__cutToTime = QLabel("@ 00:00:00.0");
 		statusPanel.addWidget(this.__cutToTime);
@@ -148,7 +150,6 @@ class MainWindow(QWidget):
 		#reset state
 		this.__path = path;
 		this.__keyFrames = {};
-		this.__combinedKeyFrames = [];
 		
 		this.__AnalyzeInput();
 		
@@ -178,15 +179,78 @@ class MainWindow(QWidget):
 		
 		with open(probeFileName, "r") as probeFile:
 			content = probeFile.read();
+			
+		#find end of video
+		matches = re.findall('Duration: (.+?),', content);
+		assert len(matches) == 1;
+		this.__endTs = this.__ParseSexasegimalTimeStamp(matches[0]);
 		
 		#step 2: find valid streams
-		matches = re.findall('Stream #0:([0-9]+)(?:\(.*?\)): (Video|Audio)', content);
+		matches = re.findall('Stream #0:([0-9]+)(?:\(.*?\))?: (Video|Audio)', content);
 		for (streamIndex, streamType) in matches:
 			this.__streams[int(streamIndex)] = streamType;
+			
+		keyFrameSets = this.__ReadKeyFrames(content);
+		this.__FindSharedKeyFrames(keyFrameSets);
 		
-		#step 3: read in key frames		
+		#convert keyframe sets to lists
+		for streamIndex in keyFrameSets:
+			l = list(keyFrameSets[streamIndex]);
+			l.sort();
+			this.__keyFrames[streamIndex] = l;
+			
+		l = list(this.__combinedKeyFrames);
+		l.sort();
+		this.__combinedKeyFrames = l;
+		
+	def __CenterOnScreen(this):
+		resolution = QDesktopWidget().screenGeometry();
+		this.move((resolution.width() / 2) - (this.frameSize().width() / 2), (resolution.height() / 2) - (this.frameSize().height() / 2));
+		
+	def __FindSharedKeyFrames(this, keyFrameSets):
+		keys = list(keyFrameSets.keys());
+		key = keys.pop();
+		
+		this.__combinedKeyFrames = set();
+		
+		for ts in keyFrameSets[key]:
+			store = True;
+			for otherKey in keys:
+				if(ts not in keyFrameSets[otherKey]):
+					store = False;
+					break;
+			if(store):
+				this.__combinedKeyFrames.add(ts);
+				
+	def __ParseFractional(this, fractional):
+		assert len(fractional) <= 9;
+		
+		return int(fractional) * (10 ** (9 - len(fractional)));
+				
+	def __ParseSexasegimalTimeStamp(this, string):
+		matches = re.findall("([0-9]{2}):([0-9]{2}):([0-9]*)\.([0-9]*)", string);
+		assert len(matches) == 1;
+		match = matches[0];
+		
+		hours,mins,secs,fractional = match;
+		return this.__ParseFractional(fractional) + int(secs) * 1000000000 + int(mins) * 60 * 1000000000 + int(hours) * 60 * 60 * 1000000000;
+		
+	def __ParseTimeStamp(this, timeStamp):
+		matches = re.findall("([0-9]*)\.([0-9]*)", timeStamp);
+		assert len(matches) == 1;
+		match = matches[0];
+			
+		return this.__ParseFractional(match[1]) + int(match[0]) * 1000000000;
+		
+	def __ReadKeyFrames(this, content):
+		result = {};
+		
+		for streamIndex in this.__streams:
+			result[streamIndex] = set();
+		
 		#matches = re.findall('\[FRAME\]\nstream_index=(.*?)\nkey_frame=1\npkt_dts_time=(.*?)\n\[/FRAME\]', content, re.MULTILINE);
 		matches = re.findall('\[PACKET\]\nstream_index=(.*?)\ndts_time=(.*?)\nflags=(?:.*?K.*?)\n\[/PACKET\]', content, re.MULTILINE);
+		
 		for (streamIndex, dts) in matches:
 			streamIndex = int(streamIndex);
 			if(streamIndex not in this.__streams):
@@ -194,46 +258,8 @@ class MainWindow(QWidget):
 			
 			ts = this.__ParseTimeStamp(dts);
 			
-			if(streamIndex in this.__keyFrames):
-				this.__keyFrames[streamIndex].add(ts);
-			else:
-				s = set();
-				s.add(ts);
-				this.__keyFrames[streamIndex] = s;
-				
-		#step 4: find shared key frames
-		keys = list(this.__keyFrames.keys());
-		key = keys.pop();
-		
-		for ts in this.__keyFrames[key]:
-			store = True;
-			for otherKey in keys:
-				if(ts not in this.__keyFrames[otherKey]):
-					store = False;
-					break;
-			if(store):
-				this.__combinedKeyFrames.append(ts);
-				
-		this.__combinedKeyFrames.sort();
-		
-	def __CenterOnScreen(this):
-		resolution = QDesktopWidget().screenGeometry();
-		this.move((resolution.width() / 2) - (this.frameSize().width() / 2), (resolution.height() / 2) - (this.frameSize().height() / 2));
-		
-	def __ParseTimeStamp(this, timeStamp):
-		matches = re.findall("([0-9]*)\.([0-9]*)", timeStamp);
-		assert len(matches) == 1;
-		match = matches[0];
-		
-		result = int(match[1]);		
-		if(len(match[1]) == 6):
-			#microseconds
-			result *= 1000;
-		else:
-			raise NotImplementedError("Unknown length for fractional time unit");
+			result[streamIndex].add(ts);
 			
-		result += int(match[0]) * 1000000000;
-		
 		return result;
 		
 	def __TimeStampToString(this, ts):
@@ -247,10 +273,10 @@ class MainWindow(QWidget):
 		
 		return "%02d:%02d:%02d.%d" % (h, m, s, fractional);
 		
-	def __UpdateKeyFrameTime(this):
-		keyFrameNumber = this.__keyFrameCounter.value();
+	def __UpdateKeyFrameTime(this, spinBox, timeLabel):
+		keyFrameNumber = spinBox.value();
 		ts = this.__activeKeyFrameList[keyFrameNumber];
-		this.__keyFrameTime.setText("@ " + this.__TimeStampToString(ts));
+		timeLabel.setText("@ " + this.__TimeStampToString(ts));
 		
 	#Event handlers
 	def __OnCut(this):
@@ -275,8 +301,12 @@ class MainWindow(QWidget):
 		#evaluate start and duration
 		delta = 0;
 		startPos = this.__activeKeyFrameList[startKeyFrame] - delta;
-		endPos = this.__activeKeyFrameList[endKeyFrame];
-		duration = endPos - startPos;
+		if(endKeyFrame == len(this.__activeKeyFrameList)):
+			#cut to end of video
+			duration = None;
+		else:
+			endPos = this.__activeKeyFrameList[endKeyFrame];
+			duration = endPos - startPos;
 		
 		print(this.__TimeStampToString(startPos));
 		
@@ -291,17 +321,28 @@ class MainWindow(QWidget):
 			'copy',
 			'-ss',
 			this.__TimeStampToString(startPos),
-			'-t',
-			this.__TimeStampToString(duration),
-			outputPath
 		];
+		if(duration is not None):
+			args.append('-t');
+			args.append(this.__TimeStampToString(duration));
+		args.append(outputPath);
+		
 		with open(os.devnull, 'w') as pipe:
 			subprocess.run(args, stdout = pipe, stderr = pipe);
 		
 		QMessageBox.information(this, "Done", "File was successfully cut.");
 		
+	def __OnCutFromChanged(this):
+		this.__UpdateKeyFrameTime(this.__cutFrom, this.__cutFromTime);
+		
+	def __OnCutToChanged(this):
+		if(this.__cutTo.value() == len(this.__activeKeyFrameList)):
+			this.__cutToTime.setText("@ " + this.__TimeStampToString(this.__endTs) + " (end of video)");
+		else:
+			this.__UpdateKeyFrameTime(this.__cutTo, this.__cutToTime);
+		
 	def __OnKeyFrameChanged(this):
-		this.__UpdateKeyFrameTime();
+		this.__UpdateKeyFrameTime(this.__keyFrameCounter, this.__keyFrameTime);
 		
 		this.__videoWidget.JumpToKeyFrame(this.__keyFrameCounter.value());
 			
@@ -318,16 +359,16 @@ class MainWindow(QWidget):
 		if(streamIndex == -1):
 			this.__activeKeyFrameList = this.__combinedKeyFrames;
 		else:
-			this.__activeKeyFrameList = list(sorted(this.__keyFrames[streamIndex]));
+			this.__activeKeyFrameList = this.__keyFrames[streamIndex];
 		this.__videoWidget.SetKeyFrameList(this.__activeKeyFrameList);
 		
 		maxKeyFrame = len(this.__activeKeyFrameList) - 1;
 		this.__keyFrameCounter.setMaximum(maxKeyFrame);
 		this.__cutFrom.setMaximum(maxKeyFrame);
-		this.__cutTo.setMaximum(maxKeyFrame);
+		this.__cutTo.setMaximum(maxKeyFrame + 1); #+ the end of video marker
 		
 	def OnKeyFrameChangedByPlayback(this, keyFrameNumber):
 		this.__keyFrameCounter.blockSignals(True);
 		this.__keyFrameCounter.setValue(keyFrameNumber);
-		this.__UpdateKeyFrameTime();
+		this.__UpdateKeyFrameTime(this.__keyFrameCounter, this.__keyFrameTime);
 		this.__keyFrameCounter.blockSignals(False);

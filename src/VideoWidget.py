@@ -1,5 +1,5 @@
 __license__ = u"""
-Copyright (c) 2017 Amir Czwink (amir130@hotmail.de)
+Copyright (c) 2017-2018 Amir Czwink (amir130@hotmail.de)
 
 This file is part of CopyCut.
 
@@ -41,6 +41,7 @@ class VideoPlayerWidget(QVideoWidget):
 			return False;
 		return this.__mediaPlayer.state() == QMediaPlayer.PlayingState;
 		
+	#Precondition: keyFrame is valid		
 	def JumpToKeyFrame(this, keyFrame):
 		this.__currentKeyFrameIdx = keyFrame;
 		ts = this.__GetScaledKeyFrameTime(this.__currentKeyFrameIdx);
@@ -86,7 +87,8 @@ class VideoPlayerWidget(QVideoWidget):
 			duration = this.__mediaPlayer.duration();
 			pos = fltPos * duration;
 			keyFrame = this.__GetNextKeyFrame(pos);
-			this.JumpToKeyFrame(keyFrame);
+			if(keyFrame is not None):
+				this.JumpToKeyFrame(keyFrame);
 			
 	#Private methods
 	def __GetNextKeyFrame(this, pos):
