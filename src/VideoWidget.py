@@ -33,8 +33,6 @@ class VideoPlayerWidget(QVideoWidget):
 		this.__keyFrameList = [];
 		this.__currentKeyFrameIdx = 0;
 		
-		this.setAutoFillBackground(True);
-		
 	#Public methods
 	def IsPlaying(this):
 		if(this.__mediaPlayer is None):

@@ -16,12 +16,17 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with CopyCut.  If not, see <https://www.gnu.org/licenses/>.
 """
+import functools;
 import os;
 from PyQt5.QtCore import *;
 from PyQt5.QtGui import *;
 from PyQt5.QtWidgets import *;
 import re;
 import subprocess;
+import threading;
+
+from BusyTaskDialog import BusyTaskDialog;
+from DragHintWidget import DragHintWidget;
 
 class StreamSourceController(QAbstractItemModel):
 	def __init__(this, mainWindow):
@@ -75,8 +80,8 @@ class MainWindow(QWidget):
 		#children
 		mainLayout = QVBoxLayout();
 		
-		from VideoWidget import VideoPlayerWidget;
-		this.__videoWidget = VideoPlayerWidget(this);
+		this.__videoWidget = DragHintWidget(this);
+		this.__videoWidget.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding));
 		mainLayout.addWidget(this.__videoWidget);
 		
 		#current panel
@@ -139,7 +144,9 @@ class MainWindow(QWidget):
 		
 		this.setLayout(mainLayout);
 		
-		this.setGeometry(0, 0, 800, 600);		
+		this.setGeometry(0, 0, 800, 600);
+		this.setAcceptDrops(True);
+		this.setWindowTitle("CopyCut");
 		this.__CenterOnScreen();
 		
 	#Public methods
@@ -156,18 +163,24 @@ class MainWindow(QWidget):
 		#reset state
 		this.__path = path;
 		this.__keyFrames = {};
+			
+		this.__RunTask("Analyzing video", this.__AnalyzeInput);
 		
-		this.__AnalyzeInput();
-		
-		#update ui		
+		#update ui
+		from VideoWidget import VideoPlayerWidget;
+		realVideoWidget = VideoPlayerWidget(this);
+		this.layout().replaceWidget(this.__videoWidget, realVideoWidget);
+		this.__videoWidget = realVideoWidget;
+		this.__videoWidget.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding));
 		this.__videoWidget.SetFile(this.__path);
 		this.__sourceStream.setModel(StreamSourceController(this));
 	
 	#Private methods
-	def __AnalyzeInput(this):
+	def __AnalyzeInput(this, dlg):
 		probeFileName = "test.txt";
 		
 		#step 1: let ffprobe find all key frames
+		dlg.UpdateStatus("Looking for all key-frames.\nDepending on the video size, this might take a while...");
 		probeFile = open(probeFileName, "wb");
 		args = [
 			'ffprobe',
@@ -183,6 +196,8 @@ class MainWindow(QWidget):
 		subprocess.run(args, stdout=probeFile, stderr=probeFile, shell=False);
 		probeFile.close();
 		
+		dlg.UpdateStatus("Querying video info.");
+		
 		with open(probeFileName, "r") as probeFile:
 			content = probeFile.read();
 			
@@ -195,6 +210,8 @@ class MainWindow(QWidget):
 		matches = re.findall('Stream #0:([0-9]+)(?:\(.*?\))?(?:\[.+?\])?: (Video|Audio)', content);
 		for (streamIndex, streamType) in matches:
 			this.__streams[int(streamIndex)] = streamType;
+			
+		dlg.UpdateStatus("Reading in found key-frames.");
 			
 		keyFrameSets = this.__ReadKeyFrames(content);
 		this.__FindSharedKeyFrames(keyFrameSets);
@@ -212,6 +229,28 @@ class MainWindow(QWidget):
 	def __CenterOnScreen(this):
 		resolution = QDesktopWidget().screenGeometry();
 		this.move((resolution.width() / 2) - (this.frameSize().width() / 2), (resolution.height() / 2) - (this.frameSize().height() / 2));
+		
+	def __CutVideo(this, inputPath, outputPath, startPos, duration, dlg):
+		dlg.UpdateStatus("FFmpeg is cutting your video...");
+		#call ffmpeg	
+		args = [
+			'ffmpeg',
+			'-i',
+			inputPath,
+			'-acodec',
+			'copy',
+			'-vcodec',
+			'copy',
+			'-ss',
+			this.__TimeStampToString(startPos),
+		];
+		if(duration is not None):
+			args.append('-t');
+			args.append(this.__TimeStampToString(duration));
+		args.append(outputPath);
+		
+		with open(os.devnull, 'w') as pipe:
+			subprocess.run(args, stdout = pipe, stderr = pipe);
 		
 	def __FindSharedKeyFrames(this, keyFrameSets):
 		keys = list(keyFrameSets.keys());
@@ -268,6 +307,15 @@ class MainWindow(QWidget):
 			
 		return result;
 		
+	def __RunTask(this, taskTitle, task):
+		dlg = BusyTaskDialog(this, taskTitle);
+		def __executeTask():
+			task(dlg);
+			dlg.finished = True;
+		thread = threading.Thread(target = __executeTask, args = ());
+		thread.start();
+		dlg.Run();
+		
 	def __TimeStampToString(this, ts):
 		fractional = ts % 1000000000;
 		ts = ts // 1000000000;
@@ -298,11 +346,12 @@ class MainWindow(QWidget):
 		name, ext = os.path.splitext(inputPath);
 		outputPath = name + "_cut_" + str(startKeyFrame) + "_-_" + str(endKeyFrame) + ext;
 		if(os.path.exists(outputPath)):
-			result = QMessageBox.question(this, "Target file exists!", "The target file does already exist. Should '" + outputPath + "' be overriden?");
+			result = QMessageBox.question(this, "Target file exists!", "The target file does already exist. Should '" + outputPath + "' be overwritten?");
 			if(result == QMessageBox.Yes):
 				os.remove(outputPath);
 			else:
 				QMessageBox.information(this, "Aborted", "Cutting was aborted.");
+				return;
 				
 		#evaluate start and duration
 		delta = this.__offset.value() * 1000000;
@@ -314,28 +363,9 @@ class MainWindow(QWidget):
 			endPos = this.__activeKeyFrameList[endKeyFrame];
 			duration = endPos - startPos;
 		
-		print(this.__TimeStampToString(startPos));
+		#print(this.__TimeStampToString(startPos));
 		
-		#call ffmpeg	
-		args = [
-			'ffmpeg',
-			'-i',
-			inputPath,
-			'-acodec',
-			'copy',
-			'-vcodec',
-			'copy',
-			'-ss',
-			this.__TimeStampToString(startPos),
-		];
-		if(duration is not None):
-			args.append('-t');
-			args.append(this.__TimeStampToString(duration));
-		args.append(outputPath);
-		
-		with open(os.devnull, 'w') as pipe:
-			subprocess.run(args, stdout = pipe, stderr = pipe);
-		
+		this.__RunTask("Cutting Video", functools.partial(this.__CutVideo, inputPath, outputPath, startPos, duration));		
 		QMessageBox.information(this, "Done", "File was successfully cut.");
 		
 	def __OnCutFromChanged(this):
@@ -382,3 +412,12 @@ class MainWindow(QWidget):
 		this.__keyFrameCounter.setValue(keyFrameNumber);
 		this.__UpdateKeyFrameTime(this.__keyFrameCounter, this.__keyFrameTime);
 		this.__keyFrameCounter.blockSignals(False);
+		
+	def dragEnterEvent(this, event):
+		if (event.mimeData().hasUrls()):
+			event.acceptProposedAction();
+			
+	def dropEvent(this, event):
+		url = event.mimeData().urls()[0];
+		path = url.toLocalFile();
+		this.LoadFile(path);
