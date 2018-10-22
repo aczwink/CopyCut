@@ -50,9 +50,9 @@ class StreamSourceController(QAbstractItemModel):
 		return 1;
 		
 	def data(this, index, role):
-		string, _ = this.__choices[index.row()];
-		
-		return QVariant(string);
+		if(role == Qt.DisplayRole):
+			string, _ = this.__choices[index.row()];
+			return QVariant(string);
 	
 	def index(this, row, col, parent):
 		return this.createIndex(row, col);
