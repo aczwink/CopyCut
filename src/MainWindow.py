@@ -23,6 +23,7 @@ from PyQt5.QtGui import *;
 from PyQt5.QtWidgets import *;
 import re;
 import subprocess;
+import tempfile;
 import threading;
 
 from BusyTaskDialog import BusyTaskDialog;
@@ -177,7 +178,7 @@ class MainWindow(QWidget):
 	
 	#Private methods
 	def __AnalyzeInput(this, dlg):
-		probeFileName = "test.txt";
+		fd, probeFileName = tempfile.mkstemp();
 		
 		#step 1: let ffprobe find all key frames
 		dlg.UpdateStatus("Looking for all key-frames.\nDepending on the video size, this might take a while...");
@@ -200,6 +201,8 @@ class MainWindow(QWidget):
 		
 		with open(probeFileName, "r") as probeFile:
 			content = probeFile.read();
+		os.close(fd);
+		os.remove(probeFileName);
 			
 		#find end of video
 		matches = re.findall('Duration: (.+?),', content);
