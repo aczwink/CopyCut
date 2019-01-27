@@ -25,13 +25,13 @@ from PyQt5.QtWidgets import *;
 
 class VideoPlayerWidget(QVideoWidget):
 	#Constructor
-	def __init__(this, parent):
+	def __init__(this, keyFrameCounter):
 		QVideoWidget.__init__(this);
 		
-		this.__parent = parent;		
+		this.__keyFrameCounter = keyFrameCounter;		
 		this.__mediaPlayer = None;
-		this.__keyFrameList = [];
-		this.__currentKeyFrameIdx = 0;
+		this.__activeStreamIndex = None;
+		this.__videoAnalyzer = None;
 		
 	#Public methods
 	def IsPlaying(this):
@@ -39,19 +39,17 @@ class VideoPlayerWidget(QVideoWidget):
 			return False;
 		return this.__mediaPlayer.state() == QMediaPlayer.PlayingState;
 		
-	#Precondition: keyFrame is valid		
 	def JumpToKeyFrame(this, keyFrame):
+		if(keyFrame is None):
+			return;
+			
 		this.__currentKeyFrameIdx = keyFrame;
-		ts = this.__GetScaledKeyFrameTime(this.__currentKeyFrameIdx);
+			
+		ts = this.__GetScaledKeyFrameTime(keyFrame);
 		this.__mediaPlayer.setPosition(ts);
 		
-		this.__parent.OnKeyFrameChangedByPlayback(this.__currentKeyFrameIdx);
-		
-	def JumpToNextKeyFrame(this):
-		this.JumpToKeyFrame(this.__currentKeyFrameIdx + 1);
-		
-	def JumpToPrevKeyFrame(this):
-		this.JumpToKeyFrame(this.__currentKeyFrameIdx - 1);
+		if(not this.IsPlaying()):
+			this.__keyFrameCounter.SetKeyFrame(keyFrame);
 		
 	def PlayPause(this):
 		if(this.__mediaPlayer is not None):
@@ -59,6 +57,9 @@ class VideoPlayerWidget(QVideoWidget):
 				this.__mediaPlayer.pause();
 			else:
 				this.__mediaPlayer.play();
+				
+	def SetActiveStreamIndex(this, activeStreamIndex):
+		this.__activeStreamIndex = activeStreamIndex;
 			
 	def SetFile(this, path):
 		this.__currentKeyFrameIdx = 0;
@@ -73,10 +74,8 @@ class VideoPlayerWidget(QVideoWidget):
 		this.__mediaPlayer.play();
 		this.__mediaPlayer.pause();
 		
-	def SetKeyFrameList(this, keyFrameList):
-		this.__keyFrameList = keyFrameList;
-		
-		this.JumpToKeyFrame(this.__currentKeyFrameIdx);
+	def SetVideoAnalyzer(this, analyzer):
+		this.__videoAnalyzer = analyzer;
 		
 	#Event handlers
 	def mousePressEvent(this, event):
@@ -84,21 +83,27 @@ class VideoPlayerWidget(QVideoWidget):
 			fltPos = event.x() / float(this.width());
 			duration = this.__mediaPlayer.duration();
 			pos = fltPos * duration;
-			keyFrame = this.__GetNextKeyFrame(pos);
+			keyFrame = this.__GetClosestKeyFrame(pos);
 			if(keyFrame is not None):
 				this.JumpToKeyFrame(keyFrame);
 			
 	#Private methods
-	def __GetNextKeyFrame(this, pos):
-		for i in range(0, len(this.__keyFrameList)):
+	def __GetClosestKeyFrame(this, pos):
+		keyFrameList = this.__videoAnalyzer.GetStreamKeyFrameList(this.__activeStreamIndex);
+		
+		lastDistance = 1e100;		
+		for i in range(0, len(keyFrameList)):
 			ts = this.__GetScaledKeyFrameTime(i);
-			if(ts > pos):
-				return i;
+			d = abs(ts - pos);
+			if(d > lastDistance):
+				return i - 1;
+			lastDistance = d;
 				
-		return None;
+		return len(keyFrameList) - 1;
 		
 	def __GetScaledKeyFrameTime(this, keyFrame):
-		ts = this.__keyFrameList[keyFrame];
+		keyFrameList = this.__videoAnalyzer.GetStreamKeyFrameList(this.__activeStreamIndex);
+		ts = keyFrameList[keyFrame];
 		
 		return ts // 1000000;
 		
@@ -106,8 +111,10 @@ class VideoPlayerWidget(QVideoWidget):
 	def __OnPositionChanged(this, pos):
 		if(this.IsPlaying()):
 			oldIdx = this.__currentKeyFrameIdx;
-			while(this.__currentKeyFrameIdx < len(this.__keyFrameList)):
-				if(this.__currentKeyFrameIdx < len(this.__keyFrameList)-1 and pos > this.__GetScaledKeyFrameTime(this.__currentKeyFrameIdx+1) ):
+			keyFrameList = this.__videoAnalyzer.GetStreamKeyFrameList(this.__activeStreamIndex);
+			
+			while(this.__currentKeyFrameIdx < len(keyFrameList)):
+				if(this.__currentKeyFrameIdx < len(keyFrameList)-1 and pos > this.__GetScaledKeyFrameTime(this.__currentKeyFrameIdx+1) ):
 					this.__currentKeyFrameIdx += 1;
 				elif(pos < this.__GetScaledKeyFrameTime(this.__currentKeyFrameIdx)):
 					this.__currentKeyFrameIdx -= 1;
@@ -115,45 +122,4 @@ class VideoPlayerWidget(QVideoWidget):
 					break;
 					
 			if(not(oldIdx == this.__currentKeyFrameIdx)):
-				this.__parent.OnKeyFrameChangedByPlayback(this.__currentKeyFrameIdx);
-"""
-		this.__currentVideo = None;
-		this.__currentSection = None;
-		this.__queryNewEntries = False;
-		
-		this.__mediaPlayer.durationChanged.connect(this.__OnDurationChanged);
-		this.__mediaPlayer.mediaStatusChanged.connect(this.__OnMediaStatusChanged);
-		this.__mediaPlayer.stateChanged.connect(this.__OnStateChanged);
-		
-	def __OnDurationChanged(this, duration):
-		this.duration = duration;
-		
-	def __OnMediaStatusChanged(this, status):
-		if(status == QMediaPlayer.EndOfMedia):
-			this.__mediaPlayer.stop();
-			
-	def __OnStateChanged(this, state):
-		if(state == QMediaPlayer.StoppedState):
-			this.__currentVideo = None;
-			if(this.__queryNewEntries):
-				this.Play();
-			
-	def keyReleaseEvent(this, keyEvent):
-		if(keyEvent.key() == Qt.Key_Escape):
-			this.__container.InformStop();
-			
-	#Private methods
-	def __GetEndTime(this):
-		if(this.__currentSection is not None):
-			if(this.__currentSection.endTime is not None):
-				return this.__currentSection.endTime;
-				
-		return None;
-		
-	def __GetStartTime(this):
-		if(this.__currentSection is not None):
-			if(this.__currentSection.startTime is not None):
-				return this.__currentSection.startTime;
-				
-		return None;
-"""
+				this.__keyFrameCounter.SetKeyFrame(this.__currentKeyFrameIdx);
