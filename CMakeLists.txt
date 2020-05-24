@@ -10,12 +10,5 @@ XPC_SetCompileDefinitions()
 
 find_package(StdPlusPlus REQUIRED)
 
-add_executable(CopyCut src/main.cpp)
+add_executable(CopyCut src/main.cpp src/StreamCopyCutter.hpp src/StreamCopyCutter.cpp src/MainWindow.hpp src/MainWindow.cpp)
 target_link_libraries(CopyCut Std++ Std++Static)
-
-
-
-find_library(AVFORMAT_LIBRARY avformat)
-find_library(AVCODEC_LIBRARY avcodec)
-find_library(AVUTIL_LIBRARY avutil)
-target_link_libraries(CopyCut ${AVFORMAT_LIBRARY} ${AVCODEC_LIBRARY} ${AVUTIL_LIBRARY})
