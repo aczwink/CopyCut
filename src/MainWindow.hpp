@@ -33,15 +33,21 @@ private:
 	//Members
 	VideoWidget *videoWidget;
 	Slider *videoPos;
+	Label* videoPosText;
 	PushButton* playPauseButton;
+
+	bool updatingPos;
 
 	UniquePointer<FileInputStream> inputFile;
 	UniquePointer<Multimedia::MediaPlayer> mediaPlayer;
 	Multimedia::TimeScale ms;
+	Timer posTimer;
 
 	//Methods
 	void TogglePlayPause();
+	void UpdateVideoPosText();
 
 	//Event handlers
 	void OnSeek();
+	void OnUpdateVideoPos();
 };
