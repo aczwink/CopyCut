@@ -1,5 +1,5 @@
 __license__ = u"""
-Copyright (c) 2017-2018 Amir Czwink (amir130@hotmail.de)
+Copyright (c) 2017-2018,2021 Amir Czwink (amir130@hotmail.de)
 
 This file is part of CopyCut.
 
@@ -65,7 +65,7 @@ class MainWindow(QWidget):
 		this.__cutFromBtn.clicked.connect(this.__OnSetFrom);
 		statusPanel.addWidget(this.__cutFromBtn);
 		
-		this.__cutFrom = KeyFrameControl(StreamChangeBehavior.JumpToStart);
+		this.__cutFrom = KeyFrameControl(StreamChangeBehavior.JumpToStart, False, True);
 		statusPanel.addWidget(this.__cutFrom);
 		
 		this.__cutToBtn = QPushButton("Cut to:");
@@ -167,9 +167,10 @@ class MainWindow(QWidget):
 			'copy',
 			'-vcodec',
 			'copy',
-			'-ss',
-			TimeStampToString(startPos),
 		];
+		if(startPos is not None):
+			args.append('-ss');
+			args.append(TimeStampToString(startPos));
 		if(duration is not None):
 			args.append('-t');
 			args.append(TimeStampToString(duration));
@@ -211,10 +212,15 @@ class MainWindow(QWidget):
 		#evaluate start and duration
 		delta = this.__offset.value() * 1000000;
 		keyFrameList = this.__videoAnalyzer.GetStreamKeyFrameList(this.__activeStreamIndex);
-		startPos = keyFrameList[startKeyFrame] + delta;
+		if(startKeyFrame == -1):
+			startPos = None;
+		else:
+			startPos = keyFrameList[startKeyFrame] + delta;
 		if(endKeyFrame == len(keyFrameList)):
 			#cut to end of video
 			duration = None;
+		elif(startPos is None):
+			duration = keyFrameList[endKeyFrame];
 		else:
 			endPos = keyFrameList[endKeyFrame];
 			duration = endPos - startPos;

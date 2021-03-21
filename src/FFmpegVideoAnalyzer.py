@@ -1,5 +1,5 @@
 __license__ = u"""
-Copyright (c) 2018 Amir Czwink (amir130@hotmail.de)
+Copyright (c) 2018,2021 Amir Czwink (amir130@hotmail.de)
 
 This file is part of CopyCut.
 
@@ -92,6 +92,8 @@ class FFmpegVideoAnalyzer(VideoAnalyzer):
 		
 	def __ParseTimeStamp(this, timeStamp):
 		matches = re.findall("([0-9]*)\.([0-9]*)", timeStamp);
+		if(len(matches) == 0):
+			return None;
 		assert len(matches) == 1;
 		match = matches[0];
 			
@@ -110,8 +112,10 @@ class FFmpegVideoAnalyzer(VideoAnalyzer):
 			streamIndex = int(streamIndex);
 			if(streamIndex not in this.GetStreams()):
 				continue; #skip invalid streams
-			
+
 			ts = this.__ParseTimeStamp(dts);
+			if(ts is None): #sometimes ffprobe outputs dts_time=N/A
+				continue;
 			
 			result[streamIndex].add(ts);
 			

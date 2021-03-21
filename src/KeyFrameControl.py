@@ -1,5 +1,5 @@
 __license__ = u"""
-Copyright (c) 2018 Amir Czwink (amir130@hotmail.de)
+Copyright (c) 2018,2021 Amir Czwink (amir130@hotmail.de)
 
 This file is part of CopyCut.
 
@@ -30,12 +30,13 @@ class StreamChangeBehavior(Enum):
 
 class KeyFrameControl(QWidget):
 	#Constructor
-	def __init__(this, streamChangeBehavior, includeEnd = False):
+	def __init__(this, streamChangeBehavior, includeEnd = False, includeStart = False):
 		QWidget.__init__(this);
 		
 		this.__streamChangeBehavior = streamChangeBehavior;
 		this.__activeStreamIndex = None;
 		this.__videoAnalyzer = None;
+		this.__includeStart = includeStart;
 		this.__includeEnd = includeEnd;
 		
 		layout = QHBoxLayout();
@@ -75,6 +76,11 @@ class KeyFrameControl(QWidget):
 		delta = 0;
 		if(this.__includeEnd):
 			delta = 1; #+ the end of video marker
+			
+		if(this.__includeStart):
+			this.__spinBox.setMinimum(-1);
+		else:
+			this.__spinBox.setMinimum(0);
 		
 		maxKeyFrame = len(keyFrameList) - 1;
 		this.__spinBox.setMaximum(maxKeyFrame + delta);
@@ -113,7 +119,9 @@ class KeyFrameControl(QWidget):
 			text = "--:--:--.-";
 		else:
 			keyFrameList = this.__videoAnalyzer.GetStreamKeyFrameList(this.__activeStreamIndex);
-			if(this.__includeEnd and (keyFrameNumber == len(keyFrameList))):
+			if(this.__includeStart and (keyFrameNumber == -1)):
+				text = "--:--:--.-" + " (start of video)";
+			elif(this.__includeEnd and (keyFrameNumber == len(keyFrameList))):
 				text = TimeStampToString(this.__videoAnalyzer.GetDuration()) + " (end of video)";
 			else:
 				ts = keyFrameList[keyFrameNumber];
